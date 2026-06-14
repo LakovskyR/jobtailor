@@ -1,0 +1,16 @@
+{
+  "name": "jobtailor",
+  "version": "0.1.0",
+  "description": "Tailor your CV and cover letter to a job offer from a single structured profile, in any language.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "cv": "node src/node/generate-cv.js",
+    "cover-letter": "node src/node/generate-cover-letter.js"
+  },
+  "keywords": ["cv", "resume", "cover-letter", "job-search", "ats", "docx"],
+  "dependencies": {
+    "docx": "^9.0.0",
+    "js-yaml": "^4.1.0"
+  }
+}

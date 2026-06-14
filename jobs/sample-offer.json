@@ -1,0 +1,9 @@
+{
+  "title": "Senior Data Analyst",
+  "company": "Globex",
+  "language": "en",
+  "must_have": ["SQL", "Python", "Power BI", "stakeholder management"],
+  "nice_to_have": ["dbt", "AWS", "forecasting"],
+  "keywords": ["data analyst", "dashboards", "segmentation", "A/B testing", "ETL"],
+  "raw_text": "Globex is hiring a Senior Data Analyst. You will build dashboards, run A/B tests, and own segmentation. Required: SQL, Python, Power BI, strong stakeholder management. Nice to have: dbt, AWS, forecasting."
+}

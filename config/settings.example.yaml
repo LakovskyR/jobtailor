@@ -1,0 +1,22 @@
+# jobtailor — settings (copy to config/settings.yaml; gitignored)
+output:
+  cv_dir: "output/cv"
+  cover_letter_dir: "output/cover-letters"
+  reports_dir: "output/reports"
+
+cv:
+  default_lang: "en"
+  max_pages: 2
+  sections: [headline, summary, experience, skills, education, certifications]
+  # how many achievements to keep per role after offer-ranking
+  achievements_per_role: 3
+
+ats:
+  # minimum keyword coverage to consider a CV "well matched"
+  pass_threshold: 0.7
+
+find_offers:
+  # which adapters under src/python/sources/ to enable
+  # options: sample, france_travail
+  enabled_sources: ["sample"]
+  max_results: 25

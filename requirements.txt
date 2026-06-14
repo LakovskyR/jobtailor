@@ -1,0 +1,9 @@
+# jobtailor — Python dependencies
+pdfplumber>=0.11        # read source PDFs (CVs, offers)
+beautifulsoup4>=4.12    # parse job-offer HTML
+requests>=2.31          # fetch offers / job sources
+PyYAML>=6.0             # experience library + settings
+pikepdf>=9.0            # embed/read PDF metadata
+python-docx>=1.1        # read generated .docx for scoring
+lxml>=5.0               # html/xml parsing backend
+streamlit>=1.36         # friendly local UI

@@ -1,0 +1,12 @@
+Alex Doe
+Data & Analytics Lead
+alex.doe@example.com
+
+Analytics Lead, Northwind Analytics, 2024-present
+- Cut reporting time 35% by automating cross-team BI pipelines with Python, SQL, and Power BI.
+- Raised customer-segmentation precision 25% with a new feature model.
+
+Senior Business Analyst, Acme Corp, 2021-2023
+- Built a self-serve dashboard suite adopted by 200+ users.
+
+Skills: Python, SQL, Power BI, Tableau, dbt, AWS, stakeholder management, A/B testing, forecasting.

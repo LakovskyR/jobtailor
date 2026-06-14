@@ -1,0 +1,27 @@
+# ─── Personal data — NEVER commit (this is what makes the repo safe to publish) ───
+# Your real experience library and any private profile data:
+config/*.yaml
+!config/*.example.yaml
+config/app-state.json
+private/
+# Source CVs / cover letters / LinkedIn exports / any personal documents:
+*.pdf
+*.docx
+*.zip
+*.csv
+# Generated, person-specific outputs:
+output/
+# Secrets:
+.env
+.env.*
+!.env.example
+
+# ─── Build / deps / local tooling ───
+.claude/
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+dist/
+.DS_Store

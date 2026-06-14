@@ -1,0 +1,1 @@
+Globex is hiring a Senior Data Analyst. You will build dashboards, run A/B tests, and own segmentation. Required: SQL, Python, Power BI, strong stakeholder management. Nice to have: dbt, AWS, forecasting.

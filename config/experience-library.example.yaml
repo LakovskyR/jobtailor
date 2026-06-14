@@ -1,0 +1,75 @@
+# jobtailor — Experience Library (EXAMPLE / fictional person)
+# Copy to config/experience-library.yaml (gitignored) and replace with your own.
+# This single file is the only person-specific input. Everything is generated from it.
+# Multilingual: any free-text field can be a map of {lang_code: text}.
+
+person:
+  name: "Alex Doe"
+  headline:
+    en: "Data & Analytics Lead | turning messy data into decisions"
+    fr: "Responsable Data & Analytics | transformer la donnée en décisions"
+  location: "Paris, France"
+  email: "alex.doe@example.com"
+  links:
+    linkedin: "https://www.linkedin.com/in/example"
+    portfolio: ""
+  languages:
+    - { name: "English", level: "professional" }
+    - { name: "French", level: "professional" }
+
+# Reusable achievement bank. Each carries metrics + tags so the tailor step can
+# rank and select the most relevant ones per offer (don't write per-job CVs by hand).
+roles:
+  - company: "Northwind Analytics"
+    title:
+      en: "Analytics Lead"
+      fr: "Responsable Analytics"
+    start: "2024-01"
+    end: "present"
+    tags: [analytics, leadership, bi]
+    achievements:
+      - text:
+          en: "Cut reporting time 35% by automating cross-team BI pipelines."
+          fr: "Réduit le temps de reporting de 35 % en automatisant les pipelines BI inter-équipes."
+        metrics: { delta: "-35%", topic: "reporting time" }
+        tags: [bi, automation, etl]
+      - text:
+          en: "Raised customer-segmentation precision 25% with a new feature model."
+          fr: "Amélioré la précision de segmentation client de 25 % via un nouveau modèle."
+        metrics: { delta: "+25%", topic: "segmentation precision" }
+        tags: [ml, segmentation, python]
+  - company: "Acme Corp"
+    title:
+      en: "Senior Business Analyst"
+      fr: "Business Analyst Senior"
+    start: "2021-01"
+    end: "2023-12"
+    tags: [analysis, sql, dashboards]
+    achievements:
+      - text:
+          en: "Built a self-serve dashboard suite adopted by 200+ users."
+          fr: "Conçu une suite de dashboards en self-service adoptée par plus de 200 utilisateurs."
+        metrics: { delta: "200+ users", topic: "adoption" }
+        tags: [dashboards, bi, adoption]
+
+skills:
+  technical: [Python, SQL, Power BI, Tableau, dbt, AWS, git]
+  business: [Stakeholder management, A/B testing, Forecasting, Data storytelling]
+
+education:
+  - school: "Example University"
+    degree:
+      en: "MSc, Statistics & Econometrics"
+      fr: "Master, Statistiques & Économétrie"
+    year: "2009"
+
+certifications:
+  - { name: "Google Advanced Data Analytics", year: "2025" }
+  - { name: "Microsoft PL-300 (Power BI)", year: "2024" }
+
+# Hints for find_offers.py and the tailor step.
+targeting:
+  titles: ["Data Analyst", "Analytics Lead", "BI Manager", "Business Analyst"]
+  locations: ["Paris", "Lyon", "Remote"]
+  seniority: "senior"
+  keywords_boost: [python, sql, "power bi", segmentation, forecasting]
