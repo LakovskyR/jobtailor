@@ -16,6 +16,7 @@ import path from "node:path";
 import yaml from "js-yaml";
 import { clean } from "./sanitize.js";
 import { complete } from "./llm.js";
+import { logReviewIssues, review } from "./review.js";
 import { AlignmentType, BorderStyle, Document, Packer, Paragraph, TextRun } from "docx";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -29,10 +30,17 @@ const MUTED = "6F6A60";
 const arr = (v) => (Array.isArray(v) ? v : v == null ? [] : [v]);
 
 function parseArgs(argv) {
-  const args = { lang: "en", offer: null, out: null };
-  for (let i = 0; i < argv.length; i += 2) {
+  const args = { lang: "en", offer: null, out: null, review: true };
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] === "--no-review") {
+      args.review = false;
+      continue;
+    }
     const key = argv[i].replace(/^--/, "");
-    if (key in args) args[key] = argv[i + 1];
+    if (key in args) {
+      args[key] = argv[i + 1];
+      i += 1;
+    }
   }
   return args;
 }
@@ -227,6 +235,126 @@ function renderDoc(library, selectedRoles, offer, lang, settings) {
   return new Document({ sections: [{ properties: {}, children }] });
 }
 
+function cvDraftText(library, selectedRoles, lang, settings) {
+  const sections = settings.cv?.sections ?? ["headline", "summary", "experience", "skills", "education", "certifications"];
+  const L = LABELS[lang] || LABELS.en;
+  const person = library.person ?? {};
+  const lines = [person.name, pickLang(person.headline, lang)];
+  lines.push([person.location, person.email, person.links?.linkedin].map(clean).filter(Boolean).join(" | "));
+
+  if (sections.includes("experience")) {
+    lines.push("", L.experience);
+    for (const role of selectedRoles) {
+      const titleLine = joinParts([pickLang(role.title, lang), role.company]);
+      const dates = [role.start, role.end].filter(Boolean).join(" - ");
+      if (titleLine) lines.push(titleLine);
+      if (dates) lines.push(dates);
+      for (const ach of arr(role.achievements)) {
+        if (ach.renderedText) lines.push(`- ${ach.renderedText}`);
+      }
+    }
+  }
+
+  const tech = arr(library.skills?.technical).map(clean).filter(Boolean);
+  const biz = arr(library.skills?.business).map(clean).filter(Boolean);
+  if (sections.includes("skills") && (tech.length || biz.length)) {
+    lines.push("", L.skills);
+    if (tech.length) lines.push(`${L.technical}: ${tech.join(", ")}`);
+    if (biz.length) lines.push(`${L.business}: ${biz.join(", ")}`);
+  }
+
+  const langs = arr(person.languages).map(langLabel).filter(Boolean);
+  if (langs.length) lines.push("", L.languages, langs.join(" | "));
+
+  const edus = arr(library.education).map((e) => joinParts([pickLang(e.degree, lang), e.school, e.year])).filter(Boolean);
+  if (sections.includes("education") && edus.length) lines.push("", L.education, ...edus);
+
+  const certs = arr(library.certifications).map(certLabel).filter(Boolean);
+  if (sections.includes("certifications") && certs.length) lines.push("", L.certifications, ...certs);
+
+  return clean(lines.filter((linePart) => linePart != null).join("\n"));
+}
+
+function roleMatches(role, selector, roleIndex, lang) {
+  if (selector == null) return false;
+  const value = String(selector).toLowerCase();
+  return value === String(roleIndex) ||
+    value === String(roleIndex + 1) ||
+    value === String(role.company ?? "").toLowerCase() ||
+    value === pickLang(role.title, lang).toLowerCase();
+}
+
+function achievementMatches(achievement, selector, achievementIndex) {
+  if (selector == null) return false;
+  const value = String(selector).toLowerCase();
+  return value === String(achievementIndex) ||
+    value === String(achievementIndex + 1) ||
+    value === String(achievement.id ?? "").toLowerCase() ||
+    value === String(achievement.achievementId ?? "").toLowerCase();
+}
+
+function findRoleIndex(roles, selector, lang) {
+  return roles.findIndex((role, index) => roleMatches(role, selector, index, lang));
+}
+
+function findAchievementIndex(role, selector) {
+  return arr(role.achievements).findIndex((achievement, index) => achievementMatches(achievement, selector, index));
+}
+
+function cloneRoles(roles) {
+  return JSON.parse(JSON.stringify(roles));
+}
+
+export function applyCvReviewEdits(selectedRoles, edits, lang) {
+  const next = cloneRoles(selectedRoles);
+  const safeEdits = edits && typeof edits === "object" ? edits : {};
+
+  for (const edit of arr(safeEdits.rephrase)) {
+    const roleIndex = findRoleIndex(next, edit.role ?? edit.roleIndex, lang);
+    if (roleIndex < 0) continue;
+    const achievementIndex = findAchievementIndex(next[roleIndex], edit.achievementId ?? edit.achievementIndex);
+    if (achievementIndex < 0) continue;
+    const text = clean(edit.text);
+    if (!text) continue;
+    next[roleIndex].achievements[achievementIndex].renderedText = text;
+  }
+
+  for (const edit of arr(safeEdits.drop)) {
+    const roleIndex = findRoleIndex(next, edit.role ?? edit.roleIndex, lang);
+    if (roleIndex < 0) continue;
+    const achievementIndex = findAchievementIndex(next[roleIndex], edit.achievementId ?? edit.achievementIndex);
+    if (achievementIndex < 0) continue;
+    next[roleIndex].achievements.splice(achievementIndex, 1);
+  }
+
+  for (const edit of arr(safeEdits.reorder)) {
+    const roleIndex = findRoleIndex(next, edit.role ?? edit.roleIndex, lang);
+    if (roleIndex < 0) continue;
+    const current = arr(next[roleIndex].achievements);
+    const ids = arr(edit.achievementIds ?? edit.order);
+    if (!ids.length) continue;
+    const ordered = [];
+    const used = new Set();
+    let valid = true;
+    for (const id of ids) {
+      const achievementIndex = current.findIndex((achievement, index) => !used.has(index) && achievementMatches(achievement, id, index));
+      if (achievementIndex < 0) {
+        valid = false;
+        break;
+      }
+      used.add(achievementIndex);
+      ordered.push(current[achievementIndex]);
+    }
+    if (!valid) continue;
+    current.forEach((achievement, index) => {
+      if (!used.has(index)) ordered.push(achievement);
+    });
+    next[roleIndex].achievements = ordered;
+  }
+
+  return next;
+}
+
 async function translateFields(values, lang) {
   const langName = lang === "fr" ? "French" : lang === "en" ? "English" : lang;
   const system =
@@ -293,7 +421,26 @@ async function main() {
   }
   const out = args.out ?? path.join(ROOT, settings.output?.cv_dir ?? "output/cv", `CV_${args.lang.toUpperCase()}.docx`);
   mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
-  const buffer = await Packer.toBuffer(renderDoc(lib, sel, offer, args.lang, settings));
+  let doc = renderDoc(lib, sel, offer, args.lang, settings);
+  const reviewEnabled = args.review && settings.generation?.review !== false;
+  if (reviewEnabled) {
+    try {
+      const result = await review({
+        draftText: cvDraftText(lib, sel, args.lang, settings),
+        kind: "cv",
+        offer,
+        library: lib,
+      });
+      logReviewIssues("cv", result.issues);
+      if (result.edits) {
+        sel = applyCvReviewEdits(sel, result.edits, args.lang);
+        doc = renderDoc(lib, sel, offer, args.lang, settings);
+      }
+    } catch (err) {
+      console.error(`[warn] review skipped (${err.message}).`);
+    }
+  }
+  const buffer = await Packer.toBuffer(doc);
   writeFileSync(path.resolve(out), buffer);
   console.error(`Wrote ${out}`);
 }

@@ -15,6 +15,14 @@ ats:
   # minimum keyword coverage to consider a CV "well matched"
   pass_threshold: 0.7
 
+verify:
+  # minimum keyword coverage required when reading generated .docx back out
+  min_ats: 0.7
+
+generation:
+  # Run one LLM review pass before writing generated documents. Use --no-review to skip per run.
+  review: true
+
 find_offers:
   # which adapters under src/python/sources/ to enable
   # options: sample, france_travail

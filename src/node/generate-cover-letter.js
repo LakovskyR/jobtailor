@@ -11,14 +11,22 @@ import { Document, Packer, Paragraph, TextRun } from "docx";
 import { clean } from "./sanitize.js";
 import { complete } from "./llm.js";
 import { rankAchievements } from "./generate-cv.js";
+import { logReviewIssues, review } from "./review.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 function parseArgs(argv) {
-  const args = { offer: null, out: null, lang: null };
-  for (let i = 0; i < argv.length; i += 2) {
+  const args = { offer: null, out: null, lang: null, review: true };
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] === "--no-review") {
+      args.review = false;
+      continue;
+    }
     const key = argv[i].replace(/^--/, "");
-    if (key in args) args[key] = argv[i + 1];
+    if (key in args) {
+      args[key] = argv[i + 1];
+      i += 1;
+    }
   }
   return args;
 }
@@ -153,6 +161,17 @@ async function main() {
   for (const avoid of style.avoid ?? []) {
     if (avoid) letter = letter.replaceAll(avoid, "");
   }
+  const reviewEnabled = args.review && settings.generation?.review !== false;
+  if (reviewEnabled) {
+    try {
+      const result = await review({ draftText: letter, kind: "cover_letter", offer, library, styleProfile: style });
+      logReviewIssues("cover_letter", result.issues);
+      letter = result.revisedText;
+    } catch (err) {
+      console.error(`[warn] review skipped (${err.message}).`);
+    }
+  }
+  letter = clean(letter);
   const out = args.out ?? path.join(ROOT, settings.output?.cover_letter_dir ?? "output/cover-letters", `cover-letter-${lang}.docx`);
   mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
   writeFileSync(path.resolve(out), await Packer.toBuffer(renderLetter(letter.trim(), library, offer, lang)));

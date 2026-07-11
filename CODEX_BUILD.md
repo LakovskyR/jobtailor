@@ -210,3 +210,107 @@ Inject via `st.markdown(<style>, unsafe_allow_html=True)` AND ship `.streamlit/c
   label/button/help via a `t(key)` helper.
 - IMPORTANT: this is the UI CHROME language only. The generated CV/cover-letter language still follows
   the OFFER (unchanged) — keep them independent, and say so in a one-line UI note.
+
+---
+
+## Round 4 — quality loop & tracking (ideas ported from MadsLorentzen/ai-job-search, 2026-07-11)
+
+Context: `ai-job-search` is a Claude-Code + LaTeX workflow — we do NOT adopt its architecture (no
+Claude Code dependency, no LaTeX; we stay OpenAI-only and keep `.docx` output). We port three *ideas*
+that fit our deterministic engine. Same rules as everywhere: never invent experience, never read/commit
+`private/`, `config/*.yaml` (non-example), or `output/`. All three tasks reuse the P-3 OpenAI shim.
+
+### N-4 — reviewer pass (`src/node/review.js`)  **[highest-value, build first]**
+A second LLM pass that critiques a generated CV/letter draft BEFORE it is written, then a single
+revise. This is a hallucination + keyword-miss catcher, not a rewrite. Export
+`review({ draftText, kind, offer, library, styleProfile? }) -> { issues[], revisedText }`.
+
+- The reviewer is given the draft, the parsed offer, and the library, and is prompted (new template
+  `prompts/review.md`) to flag ONLY: (a) any claim/metric/skill not grounded in the library
+  (fabrication), (b) must_have/keyword coverage gaps it could fix by re-selecting real library facts,
+  (c) language drift (text not in `offer.language`), (d) length/structure problems. It must NOT add
+  experience — if a gap can't be filled from the library, it reports the gap, it does not invent.
+- Wire into `generate-cv.js` and `generate-cover-letter.js`: draft → `review` → if `issues` non-empty,
+  do ONE revise pass with the issues as guidance → run `sanitize.clean()` (N-3) on the final text → write.
+- Cost control: exactly one review + at most one revise per document (no loops). Make it skippable via
+  `settings.generation.review: true|false` (default true) and `--no-review`.
+- The reviewer's grounding check is advisory to the LLM; the hard guarantee still comes from selecting
+  only library facts. Log the issue list to stderr (never the draft content) so the user sees what changed.
+
+**Done when:** generating the sample CV with review ON removes any keyword/fabrication issue the reviewer
+raises, `ats_scorer.py` still scores ≥ 0.7, output language matches the offer, and `--no-review` skips it.
+
+### P-6 — output verification (`src/python/verify_output.py`)
+Right now we emit `.docx` and never check the rendered result. Extract the text layer back OUT of the
+generated file and validate it — the portable analogue of ai-job-search's PDF inspection loop.
+
+- Read the generated `.docx` with `python-docx` (NOT the source library) so we test what was actually
+  written. Extract full text + a naive reading order (paragraphs in document order).
+- Checks: (a) contact block present as real text (name, email, phone from the library appear verbatim);
+  (b) no zero-width / control chars survived (reuse the N-3 char set); (c) language of body ==
+  `offer.language`; (d) re-run `ats_scorer` on the extracted text and assert coverage ≥
+  `settings.verify.min_ats` (default 0.7); (e) page-count heuristic vs `settings.cv.max_pages`
+  (estimate from paragraph/line count — document the heuristic, don't claim exact pagination).
+- OPTIONAL PDF path: if `soffice`/LibreOffice is on PATH, also convert docx→pdf and, if `pdftotext`
+  exists, extract that text as a second source. Both are opt-in and degrade gracefully when absent —
+  never a hard dependency (keeps the repo runnable with zero extra installs).
+- Emit a short report (checks + pass/fail + gap list). Exit 1 on any failure so CI and the UI can gate on it.
+
+**Done when:** `python src/python/verify_output.py --file output/cv/CV_EN.docx --offer jobs/sample-offer.json`
+prints a report, passes on a good CV, and exits 1 when contact info or ATS coverage is missing — with
+LibreOffice/pdftotext absent.
+
+### P-7 — application tracker (`src/python/tracker.py`)  **[pure deterministic, no LLM]**
+A local log of what was applied to and how it went — ai-job-search's `/outcome` + tracker, as plain code.
+
+- Store as an append-only CSV (human-editable) at a gitignored path: `private/applications.csv`
+  (fall back to `output/applications.csv` if `private/` doesn't exist). Columns: `date, company, role,
+  language, offer_url, ats_score, cv_path, cover_letter_path, status, outcome, notes`.
+- Subcommands: `log` (add a row; `status` defaults to `applied`, pull `ats_score`/paths from the last
+  generation if given), `update` (set `status`/`outcome`/`notes` for a company+role or row id), `list`
+  (print a table; `--status` filter), `stats` (counts by status + response/interview rate).
+- Idempotent-ish: `log` warns (not errors) on a duplicate company+role+date and requires `--force` to
+  add anyway. Never overwrite the file wholesale; append or rewrite via a temp file + atomic replace.
+- No PII leaves the machine; this file is the user's own data, gitignored, never committed or logged elsewhere.
+- Later hook (document only, don't build): the Streamlit UI's "Saved to <path>" step (Round 3) can call
+  `tracker.log` automatically after a successful generate.
+
+**Done when:** `python src/python/tracker.py log --company Acme --role "Data Scientist" --lang en` appends
+a row, `update --status interview` changes it, and `stats` reports the counts — all against a gitignored CSV.
+
+### prompts/ + tests (Round 4)
+- Add `prompts/review.md` (de-personalized, references library by field, forbids inventing experience).
+- Tests: a `review.js` unit test with a stubbed shim (asserts a fabricated claim is flagged and a real
+  gap is reported not invented); a `verify_output.py` test on a fixture docx (pass + a deliberately
+  broken one that exits 1); a `tracker.py` test for log/update/stats round-trip on a temp CSV.
+
+---
+
+## Round 5 — reviewer preserves CV styling (follow-up to N-4, 2026-07-11)
+
+### N-5 — structured reviewer edits so a reviewed CV keeps its layout
+Problem shipped in N-4: when the reviewer returns issues, `generate-cv.js` rebuilds the CV via
+`renderPlainTextDoc(revisedText)`, which silently DOWNGRADES a reviewed CV from the styled `renderDoc`
+layout (headers, borders, muted colors) to a flat plain-text docx. A clean CV keeps full styling; a
+reviewed one loses it. Fix: make the reviewer return STRUCTURED edits that feed back into `renderDoc`,
+never a flat string that replaces the whole document.
+
+- Change the CV review contract so `review({ kind: "cv", ... })` returns, alongside `issues`, an
+  `edits` object the renderer can apply to the SAME structured inputs `renderDoc` already takes —
+  e.g. `{ drop: [{role, achievementId}], rephrase: [{role, achievementId, text}], reorder?: [...] }`.
+  Edits may ONLY drop, rephrase, or reorder existing library-grounded achievements/skills — never add
+  a new role, achievement, metric, or skill (the never-invent rule holds at the data layer, not just
+  in the prompt). Anything the reviewer can't express as an edit stays a reported `issue`, not a silent rewrite.
+- `generate-cv.js`: apply `edits` to the selected roles/achievements, then call the EXISTING
+  `renderDoc(...)` so styling is preserved. DELETE the `renderPlainTextDoc` fallback path for CVs
+  (keep `cvDraftText` only as the text the reviewer reads). Run `sanitize.clean()` on any rephrased text.
+- Cover letters are unaffected — they are plain prose; `renderLetter` on `revisedText` stays as-is.
+- Cost control unchanged: one review + at most one apply, no loops; still gated by
+  `settings.generation.review` + `--no-review`.
+- Update `prompts/review.md` (or add a CV-specific block) to specify the `edits` JSON shape and the
+  drop/rephrase/reorder-only constraint. Keep it de-personalized.
+
+**Done when:** generating the sample CV with review ON and issues present produces a docx that still uses
+the styled `renderDoc` layout (not plain text), applied edits only drop/rephrase existing achievements,
+`ats_scorer.py` still scores ≥ 0.7, and a unit test asserts (a) an `edits.rephrase` changes the rendered
+achievement text and (b) an edit inventing a new achievement/role is rejected, not applied.
